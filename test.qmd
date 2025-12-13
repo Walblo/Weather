@@ -1,322 +1,801 @@
 ---
 title: "How's The Weather?"
-subtitle: "Building and developing a weather forecast system, and applying mechanistic interpretability"
+subtitle: "data ingestion  comparison  interpretability"
 author: "Jeremy Seebohm"
 date: today
-format: 
+format:
   html:
     theme: journal
     toc: true
     toc-depth: 3
     code-fold: true
     embed-resources: true
+execute:
+  echo: true
+  message: false
+  warning: false
 ---
+
+<!-- # 1. Edit test.qmd file -->
+
+<!-- # 2. Render it -->
+
+<!-- quarto::quarto_render("test.qmd") -->
+
+<!-- # 3. Rename to index.html (overwrites the old one) -->
+
+<!-- file.rename("test.html", "index.html") -->
+
+<!-- # 4. Add, commit, and push -->
+
+<!-- gert::git_add("index.html") -->
+
+<!-- gert::git_commit("Update website") -->
+
+<!-- gert::git_push() -->
+
+<!-- # Wait 1-2 minutes,refresh site -->
 
 ```{=html}
 <style>
-.glossary-term {
-    color: #c44536;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    cursor: help;
-    position: relative;
-    font-weight: 500;
-}
-
-.glossary-term:hover {
-    color: #8b2e23;
-    text-decoration-style: solid;
-}
-
+.glossary-term { color:#c44536; text-decoration: underline; text-decoration-style:dotted; cursor:help; position:relative; font-weight:500; }
+.glossary-term:hover { color:#8b2e23; text-decoration-style:solid; }
 .tooltip {
-    visibility: hidden;
-    position: absolute;
-    z-index: 1000;
-    background-color: #c44536;
-    color: white;
-    padding: 12px 15px;
-    border-radius: 6px;
-    font-size: 0.9em;
-    width: 300px;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    opacity: 0;
-    transition: opacity 0.3s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    line-height: 1.4;
-    font-weight: 400;
-    text-align: left;
+  visibility:hidden; position:absolute; z-index:1000; background-color:#c44536; color:white;
+  padding:12px 15px; border-radius:6px; font-size:0.9em; width:300px;
+  bottom:125%; left:50%; transform:translateX(-50%);
+  opacity:0; transition:opacity 0.3s; box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  line-height:1.4; font-weight:400; text-align:left;
 }
-
 .tooltip::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    margin-left: -8px;
-    border-width: 8px;
-    border-style: solid;
-    border-color: #c44536 transparent transparent transparent;
+  content:""; position:absolute; top:100%; left:50%; margin-left:-8px;
+  border-width:8px; border-style:solid; border-color:#c44536 transparent transparent transparent;
 }
-
-.glossary-term:hover .tooltip {
-    visibility: visible;
-    opacity: 1;
-}
-
-.intro-box {
-    background: #fef2f2;
-    border-left: 4px solid #c44536;
-    padding: 20px;
-    margin: 20px 0;
-}
-
-.glossary-section {
-    background: #f9f9f9;
-    padding: 30px;
-    margin-top: 40px;
-    border-radius: 8px;
-}
-
-.glossary-entry {
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid #ddd;
-}
-
-.glossary-entry:last-child {
-    border-bottom: none;
-}
-
-.glossary-entry strong {
-    color: #c44536;
-    font-size: 1.1em;
-}
+.glossary-term:hover .tooltip { visibility:visible; opacity:1; }
+.intro-box { background:#fef2f2; border-left:4px solid #c44536; padding:20px; margin:20px 0; }
+.results-box { background:#f0f9ff; border-left:4px solid #3b82f6; padding:20px; margin:20px 0; }
+.glossary-section { background:#f9f9f9; padding:30px; margin-top:40px; border-radius:8px; }
+.glossary-entry { margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #ddd; }
+.glossary-entry:last-child { border-bottom:none; }
+.glossary-entry strong { color:#c44536; font-size:1.1em; }
 </style>
 ```
 
 ```{r}
 #| label: setup
 #| include: false
-library(glue)
 
-# Function to create glossary terms with hover tooltips
-glossary <- function(term, definition) {
-  glue::glue(
-    '<span class="glossary-term">{term}<span class="tooltip">{definition}</span></span>'
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(lubridate)
+  library(keras)
+  library(tensorflow)
+})
+
+
+DATA_DIR <- "C:/Users/bohme/OneDrive/Desktop/Weather" 
+
+OUTDIR <- file.path(DATA_DIR, "report_out")
+dir.create(OUTDIR, showWarnings = FALSE, recursive = TRUE)
+
+# Repro
+SEED <- 42L
+set.seed(SEED)
+tf$random$set_seed(as.integer(SEED))
+
+# Quick glossary helper (hover definitions)
+library(glue)
+library(knitr)
+
+glossary_term <- function(term, definition) {
+  knitr::asis_output(glue('<span class="glossary-term">{term}<span class="tooltip">{definition}</span></span>'))
+}
+
+defs <- list(
+  LSTM="Long Short-Term Memory neural network (sequence model).",
+  RMSE="Root Mean Squared Error (penalizes large errors more).",
+  MAE="Mean Absolute Error (average absolute error).",
+  PermImp="Permutation importance: shuffle one input and measure error increase.",
+  Rossby="Large-scale atmospheric waves in the mid-latitudes that shape jet stream patterns and guide the eastward movement of weather systems.",
+  DOY="Day-of-year; we encode it as sin/cos for smooth yearly seasonality.",
+  Cyclical="A time encoding method that represents seasonal position using sine and cosine functions, preserving continuity across year boundaries."
+)
+
+
+rmse <- function(p, a) sqrt(mean((p - a)^2, na.rm = TRUE))
+mae  <- function(p, a) mean(abs(p - a), na.rm = TRUE)
+
+# Robust VC file discovery
+vc_files <- list.files(DATA_DIR, pattern = "^VC_.*\\.rds$", full.names = TRUE)
+
+if (length(vc_files) == 0) {
+  stop("No VC_*.rds files found in DATA_DIR = ", normalizePath(DATA_DIR),
+       "\nFix: set DATA_DIR to the folder that contains your VC_*.rds files.")
+}
+
+pick_latest <- function(files, patterns) {
+  hits <- files[Reduce(`|`, lapply(patterns, function(p) grepl(p, basename(files), ignore.case = TRUE)))]
+  if (length(hits) == 0) return(NA_character_)
+  hits[which.max(file.info(hits)$mtime)]
+}
+
+# Core locations (multi-location prediction)
+needed <- c(
+  GrandIsland = pick_latest(vc_files, c("GrandIsland", "Grand_Island", "Grand\\s*Island")),
+  Chicago     = pick_latest(vc_files, c("Chicago")),
+  Minneapolis = pick_latest(vc_files, c("Minneapolis")),
+  ThunderBay  = pick_latest(vc_files, c("ThunderBay", "Thunder_Bay", "Thunder\\s*Bay"))
+)
+
+missing <- names(needed)[is.na(needed)]
+if (length(missing) > 0) {
+  stop(
+    "Could not auto-match these locations in VC filenames: ", paste(missing, collapse = ", "),
+    "\nFound VC files:\n", paste(basename(vc_files), collapse = "\n"),
+    "\nFix: rename files to include those location keywords, or edit the patterns."
   )
 }
 
-# Pre-define common terms for easy reuse
-enzyme_def <- "A biological catalyst that accelerates chemical reactions in living organisms without being consumed in the process"
-protein_def <- "A large biomolecule composed of amino acid chains that performs diverse functions in organisms, including catalysis, structure, and signaling"
-catalyst_def <- "A substance that increases the rate of a chemical reaction without undergoing permanent chemical change itself"
-substrate_def <- "The molecule upon which an enzyme acts, binding to the active site to undergo chemical transformation"
-activesite_def <- "The specific region of an enzyme where substrate molecules bind and undergo a chemical reaction"
-algorithm_def <- "A step-by-step procedure or formula for solving a problem or completing a task"
-recursion_def <- "A programming technique where a function calls itself to solve smaller instances of the same problem"
-datastructure_def <- "A specialized format for organizing, processing, and storing data in computer memory"
-entropy_def <- "A measure of disorder or randomness in a system; in thermodynamics, it quantifies the amount of thermal energy unavailable for work"
-momentum_def <- "The product of an object's mass and velocity, representing its quantity of motion"
-```
+USE_VARS <- c("temp","tempmax","tempmin","humidity","windspeed","cloudcover","precip")
 
-::: intro-box
-**How to use this manual:** Hover your mouse over any blue underlined term to see its definition instantly. All terms are also listed in the complete glossary at the bottom.
-:::
-
-# Introduction
-
-Welcome to this interactive technical manual created with Quarto. This document demonstrates professional hover-style tooltips for technical terms. Simply hover your mouse over any highlighted term to see an instant definition popup.
-
-This manual integrates seamlessly with R code and analysis, making it perfect for technical reports and educational materials.
-
-# Biochemistry Fundamentals
-
-## Enzyme Function
-
-An `r glossary("enzyme", enzyme_def)` is a specialized type of `r glossary("protein", protein_def)` that acts as a biological `r glossary("catalyst", catalyst_def)`. Each `r glossary("enzyme", enzyme_def)` contains an `r glossary("active site", activesite_def)` where the `r glossary("substrate", substrate_def)` binds.
-
-The `r glossary("enzyme", enzyme_def)` reduces the activation energy required for the reaction, allowing biological processes to occur at physiologically relevant rates.
-
-## Energy Currency
-
-Cells store energy in molecules like `r glossary("ATP", "Adenosine triphosphate - the primary energy currency of cells, storing and transferring energy for cellular processes")`, which powers most cellular work. 'r glossary("ATP", "Adenosine triphosphate - the primary")'
-
-## Example with R Code
-
-Here's a simple calculation related to enzyme kinetics:
-
-```{r}
-#| label: enzyme-kinetics
-#| fig-cap: "Michaelis-Menten Kinetics"
-
-# Michaelis-Menten parameters
-Vmax <- 100  # Maximum reaction velocity
-Km <- 10     # Michaelis constant
-
-# Substrate concentrations
-substrate <- seq(0, 100, by = 5)
-
-# Calculate reaction velocity
-velocity <- (Vmax * substrate) / (Km + substrate)
-
-# Plot
-plot(substrate, velocity, type = "l", col = "blue", lwd = 2,
-     xlab = "Substrate Concentration", 
-     ylab = "Reaction Velocity",
-     main = "Michaelis-Menten Kinetics")
-abline(h = Vmax, col = "red", lty = 2)
-text(50, Vmax - 5, "Vmax", col = "red")
-```
-
-The curve shows how `r glossary("enzyme", enzyme_def)` velocity depends on `r glossary("substrate", substrate_def)` concentration.
-
-# Computer Science Principles
-
-## Algorithm Design
-
-An `r glossary("algorithm", algorithm_def)` is a precise sequence of instructions for solving a problem. One powerful technique is `r glossary("recursion", recursion_def)`, where an `r glossary("algorithm", algorithm_def)` calls itself with modified parameters.
-
-Efficient `r glossary("algorithms", algorithm_def)` often rely on optimal `r glossary("data structures", datastructure_def)` to achieve fast execution times.
-
-## Example: Fibonacci with Recursion
-
-```{r}
-#| label: fibonacci
-
-# Recursive implementation
-fibonacci_recursive <- function(n) {
-  if (n <= 1) return(n)
-  return(fibonacci_recursive(n-1) + fibonacci_recursive(n-2))
+read_loc <- function(path, loc) {
+  readRDS(path) %>%
+    mutate(date = as.Date(date), location = loc) %>%
+    select(date, location, any_of(USE_VARS))
 }
 
-# Calculate first 10 Fibonacci numbers
-fib_numbers <- sapply(0:10, fibonacci_recursive)
-print(fib_numbers)
+raw_long <- bind_rows(
+  read_loc(needed[["GrandIsland"]], "GrandIsland"),
+  read_loc(needed[["Chicago"]],     "Chicago"),
+  read_loc(needed[["Minneapolis"]], "Minneapolis"),
+  read_loc(needed[["ThunderBay"]],  "ThunderBay")
+) %>% arrange(date, location)
+
+wide <- raw_long %>%
+  pivot_wider(
+    id_cols = date,
+    names_from = location,
+    values_from = any_of(USE_VARS),
+    names_sep = "_"
+  ) %>%
+  arrange(date) %>%
+  drop_na()
+
+# target column
+target_col <- "temp_GrandIsland"
+if (!target_col %in% names(wide)) {
+  stop("Expected target_col 'temp_GrandIsland' not found.\nAvailable temp_* columns:\n",
+       paste(grep("^temp_", names(wide), value = TRUE), collapse = "\n"))
+}
+
+# Split
+split_idx <- floor(0.8 * nrow(wide))
+train0 <- wide[1:split_idx, ]
+test0  <- wide[(split_idx + 1):nrow(wide), ]
+
+# Normalization (fit on train)
+zfit <- function(df, cols){
+  mu <- vapply(df[cols], mean, numeric(1), na.rm = TRUE)
+  sdv <- vapply(df[cols], sd, numeric(1), na.rm = TRUE)
+  sdv[sdv == 0] <- 1
+  list(mu = mu, sd = sdv)
+}
+zapply <- function(df, cols, fit){
+  out <- df
+  for(nm in cols) out[[nm]] <- (out[[nm]] - fit$mu[[nm]])/fit$sd[[nm]]
+  out
+}
+
+# Sequences
+make_sequences <- function(df, x_cols, y_col, lookback) {
+  Xmat <- as.matrix(df[, x_cols, drop = FALSE])
+  storage.mode(Xmat) <- "double"
+  yvec <- as.numeric(df[[y_col]])
+  n <- nrow(df)
+  n_samples <- as.integer(n - lookback)
+  if (n_samples <= 0) stop("Not enough rows for lookback=", lookback)
+
+  n_features <- as.integer(ncol(Xmat))
+  X <- array(0, dim = c(n_samples, lookback, n_features))
+  y <- numeric(n_samples)
+
+  for (i in 1:n_samples) {
+    X[i,,] <- Xmat[i:(i + lookback - 1L), , drop = FALSE]
+    y[i]   <- yvec[i + lookback]
+  }
+  storage.mode(X) <- "double"
+  storage.mode(y) <- "double"
+  list(X = X, y = y)
+}
+
+# LSTM model (stable API: no layer_input, no shape/batch_shape conflicts)
+build_lstm <- function(lookback, n_features) {
+  keras_model_sequential(list(
+    layer_lstm(units = 64, return_sequences = TRUE, input_shape = c(as.integer(lookback), as.integer(n_features))),
+    layer_dropout(rate = 0.2),
+    layer_lstm(units = 32),
+    layer_dropout(rate = 0.2),
+    layer_dense(units = 16, activation = "relu"),
+    layer_dense(units = 1)
+  ))
+}
+
+train_one <- function(seq_tr, seq_te, epochs = 30L, batch = 32L) {
+  mdl <- build_lstm(dim(seq_tr$X)[2], dim(seq_tr$X)[3])
+  mdl$compile(
+    optimizer = optimizer_adam(learning_rate = 0.001),
+    loss = "mse",
+    metrics = list("mae")
+  )
+
+  # keras (via reticulate) can be picky about raw R arrays; convert to TF tensors (float32).
+  x_tr <- tf$constant(seq_tr$X, dtype = "float32")
+  y_tr <- tf$constant(matrix(seq_tr$y, ncol = 1), dtype = "float32")
+  x_te <- tf$constant(seq_te$X, dtype = "float32")
+
+  mdl$fit(
+    x = x_tr,
+    y = y_tr,
+    epochs = as.integer(epochs),
+    batch_size = as.integer(batch),
+    verbose = 0L
+  )
+
+  preds <- as.numeric(mdl$predict(x_te, verbose = 0L))
+  list(model = mdl, preds = preds)
+}
 ```
 
-This demonstrates `r glossary("recursion", recursion_def)` in action - the function calls itself to solve the problem.
+# 1) Project summary
 
-# Thermodynamics and Mechanics
+::: callout-summary
+This study evaluates whether multi-location weather data can meaningfully improve short-term temperature forecasts for Grand Island, NY. Using daily observations from upstream cities, we construct a sequence-based neural network and test several modeling choices that commonly arise in applied forecasting: how time should be encoded, whether physically motivated lagging improves performance, and which inputs the model actually relies on. The goal is not just prediction accuracy, but understanding why the model behaves the way it does.
 
-## Energy and Disorder
+This report documents: data ingestion (Visual Crossing RDS files), model design (**`r glossary_term("LSTM", defs$LSTM)`**), time encoding tests (date index vs seasons vs cyclical **`r glossary_term("DOY", defs$DOY)`**), a Rossby-inspired distance-lag experiment (**`r glossary_term("Rossby", defs$Rossby)`**), performance plots, and mechanistic interpretability (**`r glossary_term("PermImp", defs$PermImp)`**).
+:::
 
-The second law of thermodynamics states that `r glossary("entropy", entropy_def)` tends to increase in isolated systems. This principle explains why processes have preferred directions and why perfect efficiency is impossible.
+::: callout-summary
+**Outputs you’ll get when you render:** - A clean summary table of errors (**`r glossary_term("RMSE", defs$RMSE)`**, **`r glossary_term("MAE", defs$MAE)`**) - Actual vs predicted plots + residual histogram - Time-encoding comparison plot - Rossby lag comparison plot - Permutation importance plot showing “where the intelligence comes from”
+:::
 
-## Motion and Conservation
+## 1a) Future plans
 
-When an object moves, it possesses `r glossary("momentum", momentum_def)`, which is conserved in closed systems.
+This work establishes a baseline for multi-location, sequence-based weather forecasting and opens several clear directions for extension. Future experiments will explore incorporating satellite imagery as an additional input modality, allowing the model to directly learn spatial cloud and storm structure rather than relying solely on point observations. I also plan to systematically reduce and refine the input feature set, using permutation importance and ablation tests to identify the smallest set of physically meaningful variables that preserve performance. Finally, alternative upstream location selections will be evaluated to better align with dominant flow regimes and test whether different spatial configurations improve predictive skill.
+
+
+# 2) Time encoding
+
+One of the few variables where I was able to make a manual adjustment and see a real improvement in the model. Time representation has a measurable impact on sequence models. Discrete encodings such as raw date indices or seasonal buckets impose artificial boundaries that do not reflect how weather evolves. In contrast, cyclical day-of-year encoding provides a smooth, continuous representation of annual seasonality. Across repeated training runs, cyclical encoding consistently yields lower error, suggesting that the LSTM benefits from being able to interpolate naturally between adjacent points in the seasonal cycle.
+
+::: callout-summary
+**What we tested (time encoding):** we kept the model architecture fixed and changed only how “time of year” is represented. The goal is to see whether the model benefits more from (1) a simple monotone clock, (2) coarse seasonal categories, or (3) a smooth yearly cycle representation that avoids boundary artifacts.
+:::
+
+### Time encoding variants
+
+-   **Date index:** adds a simple increasing counter (`idx`). This helps the model learn long-term drift but does not explicitly encode seasonality.
+
+-   **Seasons (factor):** assigns each date to winter/spring/summer/fall and uses one-hot columns. This injects season information, but it introduces hard boundaries (the model experiences abrupt “jumps” at season changes).
+
+-   **`r glossary_term("Cyclical DOY encoding", defs$DOY)`**: encodes day-of-year using sine/cosine so December and January are treated as neighbors (smooth periodic seasonality instead of abrupt resets).
 
 ```{r}
-#| label: momentum-conservation
+#| label: time-encoding
+#| cache: true
 
-# Example: Two objects colliding
-m1 <- 5  # mass 1 (kg)
-v1 <- 10 # velocity 1 (m/s)
-m2 <- 3  # mass 2 (kg)
-v2 <- -5 # velocity 2 (m/s, negative = opposite direction)
+LOOKBACK <- 14L
+EPOCHS   <- 30L
+BATCH    <- 32L
 
-# Total momentum before collision
-momentum_before <- m1 * v1 + m2 * v2
+# Base feature columns (everything except date + target)
+base_x <- setdiff(names(train0), c("date", target_col))
 
-cat("Total momentum before collision:", momentum_before, "kg·m/s\n")
+# Three encodings:
+# (A) DATE_INDEX: add a simple numeric index
+# (B) SEASONS: add factor seasons
+# (C) CYCLICAL: add sin/cos of day-of-year
+add_time_features <- function(df, encoding) {
+  out <- df %>% mutate(idx = row_number())
+  if (encoding == "DATE_INDEX") {
+    out
+  } else if (encoding == "SEASONS") {
+    out %>% mutate(
+      month = month(date),
+      season = factor(case_when(
+        month %in% c(12,1,2) ~ "winter",
+        month %in% c(3,4,5)  ~ "spring",
+        month %in% c(6,7,8)  ~ "summer",
+        TRUE                 ~ "fall"
+      ), levels = c("winter","spring","summer","fall"))
+    ) %>%
+      bind_cols(as.data.frame(model.matrix(~ season - 1, .)))
+  } else if (encoding == "CYCLICAL") {
+    out %>% mutate(
+      doy = yday(date),
+      doy_sin = sin(2*pi*doy/365.25),
+      doy_cos = cos(2*pi*doy/365.25)
+    )
+  } else stop("Unknown encoding")
+}
+
+run_encoding <- function(encoding) {
+  tr <- add_time_features(train0, encoding)
+  te <- add_time_features(test0,  encoding)
+
+  # Build x columns: baseline + added cols (exclude raw season and month columns if present)
+  xcols <- setdiff(names(tr), c("date", target_col, "season", "month"))
+  fit <- zfit(tr, xcols)
+  trn <- zapply(tr, xcols, fit)
+  ten <- zapply(te, xcols, fit)
+
+  seq_tr <- make_sequences(trn, xcols, target_col, LOOKBACK)
+  seq_te <- make_sequences(ten, xcols, target_col, LOOKBACK)
+
+  res <- train_one(seq_tr, seq_te, epochs = EPOCHS, batch = BATCH)
+  tibble(
+    Encoding = encoding,
+    RMSE = rmse(res$preds, seq_te$y),
+    MAE  = mae(res$preds,  seq_te$y)
+  )
+}
+
+time_results <- bind_rows(
+  run_encoding("DATE_INDEX"),
+  run_encoding("SEASONS"),
+  run_encoding("CYCLICAL")
+) %>%
+  mutate(
+    Encoding = recode(Encoding,
+                      DATE_INDEX = "Date index",
+                      SEASONS    = "Seasons (factor)",
+                      CYCLICAL   = "Cyclical DOY (sin/cos)")
+  )
+
+time_results
 ```
 
-The conservation of `r glossary("momentum", momentum_def)` is fundamental to understanding collisions.
-
-# How to Add New Terms
-
-Adding your own glossary terms is simple! Follow these three steps:
-
-## Step 1: Define in Setup Chunk
-
-Add your definition variable to the setup chunk at the top of the document (after the other definitions):
+::: callout-summary
+**Summary:** cyclical day-of-year tends to beat a raw date index and usually edges out hard season boundaries. This reduces “jumps” caused by discrete season buckets.
+:::
 
 ```{r}
-#| eval: false
-#| echo: true
+#| label: fig-time-encoding
+#| fig-cap: "Time encoding comparison (lower error is better)"
+#| fig-width: 7
+#| fig-height: 4
 
-photosynthesis_def <- "The process by which plants convert light energy into chemical energy"
+time_long <- time_results %>% pivot_longer(c(RMSE, MAE), names_to = "Metric", values_to = "Value")
+
+ggplot(time_long, aes(x = reorder(Encoding, Value), y = Value, fill = Metric)) +
+  geom_col(width = 0.7, alpha = 0.9) +
+  geom_text(
+    aes(label = sprintf("%.2f", Value)),
+    hjust = -0.15,
+    size = 3.6
+  ) +
+  coord_flip() +
+  facet_wrap(~Metric, scales = "free_x") +
+  scale_fill_manual(
+    values = c(
+      MAE  = "#c44536",
+      RMSE = "#8b2e23"
+    )
+  ) +
+  expand_limits(y = max(time_long$Value) * 1.15) +
+  labs(
+    title = "How time encoding affects LSTM accuracy",
+
+    x = NULL,
+    y = "Error (°C)",
+    fill = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    strip.text = element_text(face = "bold"),
+    panel.grid.major.y = element_blank(),
+    legend.position = "top"
+  )
+
 ```
 
-## Step 2: Use in Text
+# 3) Rossby-inspired distance lag experiment
 
-Then use the `glossary()` function in your text. Here's a real working example:
+Large-scale midlatitude weather systems are often organized by **`r glossary_term("Rossby waves", defs$Rossby)`**, which propagate synoptic-scale energy eastward over several days. This motivates the hypothesis that upstream atmospheric conditions may influence local temperatures after a predictable travel time.
 
-Plants use `r glossary("photosynthesis", "The process by which plants convert light energy into chemical energy")` to produce glucose and oxygen from sunlight, water, and carbon dioxide.
+To test this idea, upstream features were explicitly **time-shifted by lagging dates** according to approximate geographic distances and an assumed propagation speed, with the goal of better aligning predictors to the expected flow of Rossby waves. In practice, this distance-based lagging does not improve predictive performance and often degrades accuracy. This indicates that fixed travel-time assumptions are too simplistic for daily weather evolution.
 
-See how the term appears with a hover tooltip? You can either: - Define the term inline: `glossary("term", "definition here")` - Use a pre-defined variable: `glossary("term", term_def)`
+Instead, the LSTM’s lookback window learns more flexible, context-dependent temporal alignments on its own, adapting to variable flow speeds, seasonal changes, and local dynamics more effectively than a hand-crafted Rossby-style lag.
 
-## Step 3: Add to Complete Glossary
 
-Add a corresponding entry in the "Complete Glossary" section at the bottom so readers can find all terms in one place.
+![](rossbywave.jpg){fig-cap="Rossby waves organize large-scale midlatitude weather patterns and influence eastward propagation of atmospheric systems."}
 
-# Complete Glossary {#glossary}
-
-:::::::::::::: glossary-section
-### All Technical Terms
-
-::: glossary-entry
-**Active Site**\
-The specific region of an enzyme where substrate molecules bind and undergo a chemical reaction.
-:::
-
-::: glossary-entry
-**Algorithm**\
-A step-by-step procedure or formula for solving a problem or completing a task.
-:::
-
-::: glossary-entry
-**ATP (Adenosine Triphosphate)**\
-The primary energy currency of cells, storing and transferring energy for cellular processes.
-:::
-
-::: glossary-entry
-**Catalyst**\
-A substance that increases the rate of a chemical reaction without undergoing permanent chemical change itself.
-:::
-
-::: glossary-entry
-**Data Structure**\
-A specialized format for organizing, processing, and storing data in computer memory.
-:::
-
-::: glossary-entry
-**Entropy**\
-A measure of disorder or randomness in a system; in thermodynamics, it quantifies the amount of thermal energy unavailable for work.
-:::
-
-::: glossary-entry
-**Enzyme**\
-A biological catalyst that accelerates chemical reactions in living organisms without being consumed in the process.
-:::
-
-::: glossary-entry
-**Momentum**\
-The product of an object's mass and velocity, representing its quantity of motion.
-:::
-
-::: glossary-entry
-**Protein**\
-A large biomolecule composed of amino acid chains that performs diverse functions in organisms, including catalysis, structure, and signaling.
-:::
-
-::: glossary-entry
-**Recursion**\
-A programming technique where a function calls itself to solve smaller instances of the same problem.
-:::
-
-::: glossary-entry
-**Substrate**\
-The molecule upon which an enzyme acts, binding to the active site to undergo chemical transformation.
-:::
-::::::::::::::
-
-# Session Info
 
 ```{r}
-#| label: session-info
-#| echo: false
-sessionInfo()
+#| label: rossby-setup
+#| cache: true
+
+# Coordinates for lag computation
+COORDS <- tribble(
+  ~location,     ~lat,   ~lon,
+  "GrandIsland",  43.03, -78.96,
+  "Chicago",      41.88, -87.63,
+  "Minneapolis",  44.98, -93.27,
+  "ThunderBay",   48.38, -89.25
+)
+
+# km/day: main tuning knob
+SPEED_KM_PER_DAY <- 800
+
+compute_lag_days <- function(from_loc, to_loc, speed_km_per_day) {
+  a <- COORDS %>% filter(location == from_loc)
+  b <- COORDS %>% filter(location == to_loc)
+  if (nrow(a) != 1) stop("COORDS must have exactly 1 row for location='", from_loc, "'. Found ", nrow(a))
+  if (nrow(b) != 1) stop("COORDS must have exactly 1 row for location='", to_loc, "'. Found ", nrow(b))
+  km <- geosphere::distHaversine(c(a$lon, a$lat), c(b$lon, b$lat)) / 1000
+  as.integer(max(0, round(km / speed_km_per_day)))
+}
+
+
+
+locs <- c("GrandIsland","Chicago","Minneapolis","ThunderBay")
+
+lag_map <- tibble(location = locs) %>%
+  mutate(lag_days = if_else(location == "GrandIsland", 0L,
+                            as.integer(map_int(location, ~ compute_lag_days(.x, "GrandIsland", SPEED_KM_PER_DAY)))))
+
+max_lag <- max(lag_map$lag_days)
+lag_map
 ```
+
+```{r}
+#| label: rossby-run
+#| cache: true
+
+# Baseline dataset
+base <- train0 %>% select(-date)
+base_test <- test0 %>% select(-date)
+
+# Lagged dataset (apply to predictors only)
+wide_lagged <- wide
+for (loc in lag_map$location) {
+  ld <- lag_map$lag_days[lag_map$location == loc]
+  for (v in USE_VARS) {
+    nm <- paste0(v, "_", loc)
+    if (!nm %in% names(wide_lagged)) next
+    if (nm == target_col) next
+    wide_lagged[[nm]] <- dplyr::lag(wide_lagged[[nm]], n = ld)
+  }
+}
+wide_lagged <- wide_lagged %>% drop_na()
+
+# Split lagged by matching dates to base split for fairness
+train_lag <- wide_lagged %>% filter(date %in% train0$date) %>% arrange(date)
+test_lag  <- wide_lagged %>% filter(date %in% test0$date)  %>% arrange(date)
+
+x_base <- setdiff(names(train0), c("date", target_col))
+x_lag  <- setdiff(names(train_lag), c("date", target_col))
+
+fit_base <- zfit(train0, x_base)
+fit_lag  <- zfit(train_lag, x_lag)
+
+train_base_n <- zapply(train0, x_base, fit_base)
+test_base_n  <- zapply(test0,  x_base, fit_base)
+
+train_lag_n  <- zapply(train_lag, x_lag, fit_lag)
+test_lag_n   <- zapply(test_lag,  x_lag, fit_lag)
+
+seq_tr_base <- make_sequences(train_base_n, x_base, target_col, LOOKBACK)
+seq_te_base <- make_sequences(test_base_n,  x_base, target_col, LOOKBACK)
+
+seq_tr_lag  <- make_sequences(train_lag_n,  x_lag,  target_col, LOOKBACK)
+seq_te_lag  <- make_sequences(test_lag_n,   x_lag,  target_col, LOOKBACK)
+
+res_base <- train_one(seq_tr_base, seq_te_base, epochs = EPOCHS, batch = BATCH)
+res_lag  <- train_one(seq_tr_lag,  seq_te_lag,  epochs = EPOCHS, batch = BATCH)
+
+rossby_metrics <- tibble(
+  Model = c("Baseline (raw multi-location)", "Distance-lagged (Rossby-inspired)"),
+  RMSE  = c(rmse(res_base$preds, seq_te_base$y), rmse(res_lag$preds, seq_te_lag$y)),
+  MAE   = c(mae(res_base$preds,  seq_te_base$y), mae(res_lag$preds,  seq_te_lag$y))
+)
+
+write.csv(rossby_metrics, file.path(OUTDIR, "rossby_metrics.csv"), row.names = FALSE)
+write.csv(lag_map, file.path(OUTDIR, "rossby_lag_days.csv"), row.names = FALSE)
+
+rossby_metrics
+```
+
+::: callout-summary
+**Summary:** this test checks whether “travel-time aligned” upstream features help. If it gets worse (common on daily aggregates), it suggests the LSTM is already learning effective alignment via its lookback window, or the distance-only lag rule is too crude.
+:::
+
+```{r}
+#| label: fig-rossby-rmse
+#| fig-cap: "Rossby-inspired lagging vs baseline"
+#| fig-width: 8
+#| fig-height: 3.6
+
+ggplot(rossby_metrics, aes(x = reorder(Model, RMSE), y = RMSE, fill = Model)) +
+  geom_col(width = 0.65, alpha = 0.9, show.legend = FALSE) +
+  geom_text(
+    aes(label = sprintf("%.2f", RMSE)),
+    hjust = -0.15,
+    size = 3.8
+  ) +
+  coord_flip() +
+  expand_limits(y = max(rossby_metrics$RMSE) * 1.15) +
+  scale_fill_manual(
+    values = c(
+      "Baseline (raw multi-location)"       = "#3b82f6",
+      "Distance-lagged (Rossby-inspired)"   = "#c44536"
+    )
+  ) +
+  labs(
+    title = "Does Rossby-inspired distance lagging help?",
+    subtitle = "Pre-aligning upstream data by travel time increases error",
+    x = NULL,
+    y = "RMSE (°C)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    panel.grid.major.y = element_blank()
+  )
+```
+
+::: callout-summary
+**Interpretation:** Both models reproduce the large-scale seasonal cycle and much of the short-term variability in Grand Island temperatures. However, the **baseline model** more closely tracks rapid changes and temperature extremes. The **distance-lagged model** appears slightly smoother and delayed, particularly during sharp warm-ups and cool-downs, indicating that a fixed upstream travel-time assumption blurs fast-moving weather signals.
+
+This behavior is consistent with the role of **`r glossary_term("Rossby waves", defs$Rossby)`**: while they organize broad mid-latitude atmospheric flow, real weather evolution does not propagate at a single constant speed. Jet-stream variability, local dynamics, and storm development all introduce timing differences that a rigid distance-based lag cannot capture. In practice, the LSTM’s internal memory learns more effective temporal alignment on its own than the imposed Rossby-style lag.
+:::
+
+
+```{r}
+#| label: fig-rossby-preds
+#| fig-cap: "Actual vs predicted (baseline vs distance-lagged)"
+#| fig-width: 9
+#| fig-height: 6
+
+dates_base <- test0$date[(LOOKBACK + 1):nrow(test0)]
+dates_lag  <- test_lag$date[(LOOKBACK + 1):nrow(test_lag)]
+
+pred_df <- bind_rows(
+  tibble(date = dates_base, actual = seq_te_base$y, pred = res_base$preds, Model = "Baseline"),
+  tibble(date = dates_lag,  actual = seq_te_lag$y,  pred = res_lag$preds,  Model = "Distance-lagged")
+)
+
+ggplot(pred_df, aes(x = date)) +
+  geom_line(aes(y = actual, color = "Actual"), linewidth = 0.9) +
+  geom_line(aes(y = pred, color = "Predicted"), linewidth = 0.9, linetype = "dashed") +
+  facet_wrap(~ Model, ncol = 1, scales = "free_x") +
+  scale_color_manual(
+    values = c(
+      "Actual"    = "#111827",
+      "Predicted" = "#c44536"
+    )
+  ) +
+  labs(
+    title = "Grand Island temperature: actual vs predicted",
+    subtitle = "Baseline vs Rossby-lagged models over the test window",
+    x = NULL,
+    y = "Temperature (°C)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    legend.position = "top",
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+# 4) Main model performance
+
+Using the best-performing time representation, the final model achieves stable test-set performance with errors in line with operational short-range forecasts. The model captures both day-to-day variability and broader seasonal trends, with residuals centered near zero. These results indicate that combining upstream spatial information with sequence modeling provides meaningful predictive signal without overfitting.
+
+```{r}
+#| label: main-model
+#| cache: true
+
+# Use cyclical encoding on the original wide data
+tr <- train0 %>% mutate(
+  doy = yday(date),
+  doy_sin = sin(2*pi*doy/365.25),
+  doy_cos = cos(2*pi*doy/365.25)
+)
+te <- test0 %>% mutate(
+  doy = yday(date),
+  doy_sin = sin(2*pi*doy/365.25),
+  doy_cos = cos(2*pi*doy/365.25)
+)
+
+xcols <- setdiff(names(tr), c("date", target_col))
+fit <- zfit(tr, xcols)
+trn <- zapply(tr, xcols, fit)
+ten <- zapply(te, xcols, fit)
+
+seq_tr <- make_sequences(trn, xcols, target_col, LOOKBACK)
+seq_te <- make_sequences(ten, xcols, target_col, LOOKBACK)
+
+main_res <- train_one(seq_tr, seq_te, epochs = EPOCHS, batch = BATCH)
+
+main_metrics <- tibble(
+  RMSE = rmse(main_res$preds, seq_te$y),
+  MAE  = mae(main_res$preds,  seq_te$y)
+)
+main_metrics
+```
+
+::: callout-summary
+**Summary:** the MAE is the “typical” absolute error magnitude. If MAE ≈ 1.7°C, that’s about **3.1°F**.
+:::
+
+```{r}
+#| label: fig-main-preds
+#| fig-cap: "Main model: actual vs predicted (test window)"
+#| fig-width: 9
+#| fig-height: 4.8
+
+dates_main <- te$date[(LOOKBACK + 1):nrow(te)]
+plot_df <- tibble(date = dates_main, actual = seq_te$y, pred = main_res$preds)
+
+ggplot(plot_df, aes(x = date)) +
+  geom_line(aes(y = actual, color = "Actual"), linewidth = 1.0) +
+  geom_line(aes(y = pred,   color = "Predicted"), linewidth = 0.9, linetype = "dashed", alpha = 0.9) +
+  scale_color_manual(
+    values = c("Actual" = "#111827", "Predicted" = "#c44536")
+  ) +
+  labs(
+    title = "Grand Island Temperature: Actual vs Predicted",
+    subtitle = paste0(
+      "Test window performance — RMSE = ",
+      sprintf("%.2f", main_metrics$RMSE),
+      " °C | MAE = ",
+      sprintf("%.2f", main_metrics$MAE),
+      " °C"
+    ),
+    x = NULL,
+    y = "Temperature (°C)",
+    color = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey30"),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+#| label: fig-main-resid
+#| fig-cap: "Residuals on the test window (Predicted − Actual)"
+#| fig-width: 7
+#| fig-height: 4
+
+resid <- plot_df$pred - plot_df$actual
+
+ggplot(tibble(resid = resid), aes(x = resid)) +
+  geom_histogram(
+    bins = 35,
+    fill = "#c44536",
+    alpha = 0.8,
+    color = "white"
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    linewidth = 0.8,
+    color = "#111827"
+  ) +
+  labs(
+    title = "Residual Distribution (Predicted − Actual)",
+    subtitle = "Centered near zero indicates unbiased predictions",
+    x = "Prediction Error (°C)",
+    y = "Count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "grey30"),
+    panel.grid.minor = element_blank()
+  )
+```
+
+## 5) Mechanistic interpretability
+
+**`r glossary_term("Mechanistic interpretability", "Methods that probe how a neural network uses its inputs internally, helping explain why a model makes particular predictions rather than just how accurate it is.")`** asks a deeper question than accuracy alone: what information is the model actually using? Neural networks like LSTMs are often treated as black boxes because their internal logic is difficult to inspect directly. Mechanistic interpretability techniques aim to open this box by observing how model behavior changes when specific inputs are deliberately disrupted.
+
+Here, we use permutation importance as a practical interpretability tool. Each input feature is randomly shuffled in turn, and the resulting increase in **`r glossary_term("RMSE", defs$RMSE)`** is measured. If shuffling a feature causes a large drop in performance, the model is strongly relying on that information. For compatibility with a sequence model, importance is computed using a tabular snapshot taken from the final timestep of each input sequence.
+
+The results show that the model relies most heavily on upstream temperature variables, not on calendar features alone. While cyclical time encoding provides helpful seasonal context, the strongest importance scores come from physically meaningful inputs such as temperatures from Chicago, Minneapolis, and Thunder Bay. This indicates that the LSTM is learning real spatio-temporal structure rather than simply memorizing seasonal patterns.
+
+Interpretation: larger importance values mean that disrupting a feature significantly harms accuracy, confirming that upstream temperature signals — not calendar artifacts — are the primary drivers of the model’s predictions.
+
+
+```{r}
+#| label: perm-importance
+#| cache: true
+
+if (!requireNamespace("iml", quietly = TRUE)) {
+  stop("Please install iml: install.packages('iml')")
+}
+library(iml)
+
+
+X_tab <- as.data.frame(seq_tr$X[, LOOKBACK, ])
+colnames(X_tab) <- xcols
+Y_tab <- seq_tr$y
+
+predict_lstm <- function(m, newdata) {
+  arr <- array(as.matrix(newdata), dim = c(nrow(newdata), LOOKBACK, ncol(newdata)))
+  storage.mode(arr) <- "double"
+  as.numeric(m$predict(arr, verbose = 0)[,1])
+}
+
+pred_obj <- Predictor$new(
+  model = main_res$model,
+  data  = X_tab,
+  y     = Y_tab,
+  predict.function = predict_lstm
+)
+
+imp <- FeatureImp$new(pred_obj, loss = "rmse", n.repetitions = 5)
+imp_df <- imp$results %>% arrange(desc(importance))
+imp_df
+```
+
+```{r}
+#| label: fig-perm-importance
+#| fig-cap: "Permutation importance (ΔRMSE): higher means the model relies more on that input"
+#| fig-width: 8
+#| fig-height: 6
+
+top_n <- 18
+plot_imp <- imp_df %>% slice_head(n = top_n)
+
+ggplot(plot_imp,
+       aes(x = reorder(feature, importance), y = importance)) +
+  geom_col(
+    fill = "#c44536",
+    alpha = 0.85,
+    width = 0.7
+  ) +
+  coord_flip() +
+  geom_text(
+    aes(label = sprintf("%.3f", importance)),
+    hjust = -0.1,
+    size = 3.2,
+    color = "#4b5563"
+  ) +
+  labs(
+    title = "Mechanistic interpretability: what drives predictions?",
+    subtitle = "Permutation importance measured as increase in RMSE after feature shuffling",
+    x = NULL,
+    y = expression(Delta * " RMSE (higher = more relied upon)")
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "#6b7280"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(size = 10)
+  ) +
+  expand_limits(y = max(plot_imp$importance) * 1.12)
+```
+
+# 6) Glossary
+
+-   **`r glossary_term("Cyclical DOY encoding", defs$DOY)`**
+-   **`r glossary_term("LSTM", defs$LSTM)`**
+-   **`r glossary_term("RMSE", defs$RMSE)`**
+-   **`r glossary_term("MAE", defs$MAE)`**
+-   **`r glossary_term("Permutation importance", defs$PermImp)`**
+-   **`r glossary_term("Rossby waves", defs$Rossby)`**
+-   **`r glossary_term("DOY cyclical encoding", defs$DOY)`**

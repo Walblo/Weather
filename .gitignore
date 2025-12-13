@@ -4,3 +4,16 @@
 .httr-oauth
 .DS_Store
 .quarto
+
+# Quarto / knitr output
+*_cache/
+*_files/
+report_out/
+*_out/
+
+# Data files
+*.rds
+
+# Scratch / comparison scripts
+RossbyLagCompare.R
+
