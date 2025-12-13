@@ -1,0 +1,322 @@
+---
+title: "How's The Weather?"
+subtitle: "Building and developing a weather forecast system, and applying mechanistic interpretability"
+author: "Jeremy Seebohm"
+date: today
+format: 
+  html:
+    theme: journal
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+---
+
+```{=html}
+<style>
+.glossary-term {
+    color: #c44536;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    cursor: help;
+    position: relative;
+    font-weight: 500;
+}
+
+.glossary-term:hover {
+    color: #8b2e23;
+    text-decoration-style: solid;
+}
+
+.tooltip {
+    visibility: hidden;
+    position: absolute;
+    z-index: 1000;
+    background-color: #c44536;
+    color: white;
+    padding: 12px 15px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    width: 300px;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    line-height: 1.4;
+    font-weight: 400;
+    text-align: left;
+}
+
+.tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -8px;
+    border-width: 8px;
+    border-style: solid;
+    border-color: #c44536 transparent transparent transparent;
+}
+
+.glossary-term:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+.intro-box {
+    background: #fef2f2;
+    border-left: 4px solid #c44536;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.glossary-section {
+    background: #f9f9f9;
+    padding: 30px;
+    margin-top: 40px;
+    border-radius: 8px;
+}
+
+.glossary-entry {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.glossary-entry:last-child {
+    border-bottom: none;
+}
+
+.glossary-entry strong {
+    color: #c44536;
+    font-size: 1.1em;
+}
+</style>
+```
+
+```{r}
+#| label: setup
+#| include: false
+library(glue)
+
+# Function to create glossary terms with hover tooltips
+glossary <- function(term, definition) {
+  glue::glue(
+    '<span class="glossary-term">{term}<span class="tooltip">{definition}</span></span>'
+  )
+}
+
+# Pre-define common terms for easy reuse
+enzyme_def <- "A biological catalyst that accelerates chemical reactions in living organisms without being consumed in the process"
+protein_def <- "A large biomolecule composed of amino acid chains that performs diverse functions in organisms, including catalysis, structure, and signaling"
+catalyst_def <- "A substance that increases the rate of a chemical reaction without undergoing permanent chemical change itself"
+substrate_def <- "The molecule upon which an enzyme acts, binding to the active site to undergo chemical transformation"
+activesite_def <- "The specific region of an enzyme where substrate molecules bind and undergo a chemical reaction"
+algorithm_def <- "A step-by-step procedure or formula for solving a problem or completing a task"
+recursion_def <- "A programming technique where a function calls itself to solve smaller instances of the same problem"
+datastructure_def <- "A specialized format for organizing, processing, and storing data in computer memory"
+entropy_def <- "A measure of disorder or randomness in a system; in thermodynamics, it quantifies the amount of thermal energy unavailable for work"
+momentum_def <- "The product of an object's mass and velocity, representing its quantity of motion"
+```
+
+::: intro-box
+**How to use this manual:** Hover your mouse over any blue underlined term to see its definition instantly. All terms are also listed in the complete glossary at the bottom.
+:::
+
+# Introduction
+
+Welcome to this interactive technical manual created with Quarto. This document demonstrates professional hover-style tooltips for technical terms. Simply hover your mouse over any highlighted term to see an instant definition popup.
+
+This manual integrates seamlessly with R code and analysis, making it perfect for technical reports and educational materials.
+
+# Biochemistry Fundamentals
+
+## Enzyme Function
+
+An `r glossary("enzyme", enzyme_def)` is a specialized type of `r glossary("protein", protein_def)` that acts as a biological `r glossary("catalyst", catalyst_def)`. Each `r glossary("enzyme", enzyme_def)` contains an `r glossary("active site", activesite_def)` where the `r glossary("substrate", substrate_def)` binds.
+
+The `r glossary("enzyme", enzyme_def)` reduces the activation energy required for the reaction, allowing biological processes to occur at physiologically relevant rates.
+
+## Energy Currency
+
+Cells store energy in molecules like `r glossary("ATP", "Adenosine triphosphate - the primary energy currency of cells, storing and transferring energy for cellular processes")`, which powers most cellular work. 'r glossary("ATP", "Adenosine triphosphate - the primary")'
+
+## Example with R Code
+
+Here's a simple calculation related to enzyme kinetics:
+
+```{r}
+#| label: enzyme-kinetics
+#| fig-cap: "Michaelis-Menten Kinetics"
+
+# Michaelis-Menten parameters
+Vmax <- 100  # Maximum reaction velocity
+Km <- 10     # Michaelis constant
+
+# Substrate concentrations
+substrate <- seq(0, 100, by = 5)
+
+# Calculate reaction velocity
+velocity <- (Vmax * substrate) / (Km + substrate)
+
+# Plot
+plot(substrate, velocity, type = "l", col = "blue", lwd = 2,
+     xlab = "Substrate Concentration", 
+     ylab = "Reaction Velocity",
+     main = "Michaelis-Menten Kinetics")
+abline(h = Vmax, col = "red", lty = 2)
+text(50, Vmax - 5, "Vmax", col = "red")
+```
+
+The curve shows how `r glossary("enzyme", enzyme_def)` velocity depends on `r glossary("substrate", substrate_def)` concentration.
+
+# Computer Science Principles
+
+## Algorithm Design
+
+An `r glossary("algorithm", algorithm_def)` is a precise sequence of instructions for solving a problem. One powerful technique is `r glossary("recursion", recursion_def)`, where an `r glossary("algorithm", algorithm_def)` calls itself with modified parameters.
+
+Efficient `r glossary("algorithms", algorithm_def)` often rely on optimal `r glossary("data structures", datastructure_def)` to achieve fast execution times.
+
+## Example: Fibonacci with Recursion
+
+```{r}
+#| label: fibonacci
+
+# Recursive implementation
+fibonacci_recursive <- function(n) {
+  if (n <= 1) return(n)
+  return(fibonacci_recursive(n-1) + fibonacci_recursive(n-2))
+}
+
+# Calculate first 10 Fibonacci numbers
+fib_numbers <- sapply(0:10, fibonacci_recursive)
+print(fib_numbers)
+```
+
+This demonstrates `r glossary("recursion", recursion_def)` in action - the function calls itself to solve the problem.
+
+# Thermodynamics and Mechanics
+
+## Energy and Disorder
+
+The second law of thermodynamics states that `r glossary("entropy", entropy_def)` tends to increase in isolated systems. This principle explains why processes have preferred directions and why perfect efficiency is impossible.
+
+## Motion and Conservation
+
+When an object moves, it possesses `r glossary("momentum", momentum_def)`, which is conserved in closed systems.
+
+```{r}
+#| label: momentum-conservation
+
+# Example: Two objects colliding
+m1 <- 5  # mass 1 (kg)
+v1 <- 10 # velocity 1 (m/s)
+m2 <- 3  # mass 2 (kg)
+v2 <- -5 # velocity 2 (m/s, negative = opposite direction)
+
+# Total momentum before collision
+momentum_before <- m1 * v1 + m2 * v2
+
+cat("Total momentum before collision:", momentum_before, "kg·m/s\n")
+```
+
+The conservation of `r glossary("momentum", momentum_def)` is fundamental to understanding collisions.
+
+# How to Add New Terms
+
+Adding your own glossary terms is simple! Follow these three steps:
+
+## Step 1: Define in Setup Chunk
+
+Add your definition variable to the setup chunk at the top of the document (after the other definitions):
+
+```{r}
+#| eval: false
+#| echo: true
+
+photosynthesis_def <- "The process by which plants convert light energy into chemical energy"
+```
+
+## Step 2: Use in Text
+
+Then use the `glossary()` function in your text. Here's a real working example:
+
+Plants use `r glossary("photosynthesis", "The process by which plants convert light energy into chemical energy")` to produce glucose and oxygen from sunlight, water, and carbon dioxide.
+
+See how the term appears with a hover tooltip? You can either: - Define the term inline: `glossary("term", "definition here")` - Use a pre-defined variable: `glossary("term", term_def)`
+
+## Step 3: Add to Complete Glossary
+
+Add a corresponding entry in the "Complete Glossary" section at the bottom so readers can find all terms in one place.
+
+# Complete Glossary {#glossary}
+
+:::::::::::::: glossary-section
+### All Technical Terms
+
+::: glossary-entry
+**Active Site**\
+The specific region of an enzyme where substrate molecules bind and undergo a chemical reaction.
+:::
+
+::: glossary-entry
+**Algorithm**\
+A step-by-step procedure or formula for solving a problem or completing a task.
+:::
+
+::: glossary-entry
+**ATP (Adenosine Triphosphate)**\
+The primary energy currency of cells, storing and transferring energy for cellular processes.
+:::
+
+::: glossary-entry
+**Catalyst**\
+A substance that increases the rate of a chemical reaction without undergoing permanent chemical change itself.
+:::
+
+::: glossary-entry
+**Data Structure**\
+A specialized format for organizing, processing, and storing data in computer memory.
+:::
+
+::: glossary-entry
+**Entropy**\
+A measure of disorder or randomness in a system; in thermodynamics, it quantifies the amount of thermal energy unavailable for work.
+:::
+
+::: glossary-entry
+**Enzyme**\
+A biological catalyst that accelerates chemical reactions in living organisms without being consumed in the process.
+:::
+
+::: glossary-entry
+**Momentum**\
+The product of an object's mass and velocity, representing its quantity of motion.
+:::
+
+::: glossary-entry
+**Protein**\
+A large biomolecule composed of amino acid chains that performs diverse functions in organisms, including catalysis, structure, and signaling.
+:::
+
+::: glossary-entry
+**Recursion**\
+A programming technique where a function calls itself to solve smaller instances of the same problem.
+:::
+
+::: glossary-entry
+**Substrate**\
+The molecule upon which an enzyme acts, binding to the active site to undergo chemical transformation.
+:::
+::::::::::::::
+
+# Session Info
+
+```{r}
+#| label: session-info
+#| echo: false
+sessionInfo()
+```
